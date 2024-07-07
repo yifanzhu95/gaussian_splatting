@@ -12,10 +12,10 @@
 import torch
 import math
 from diff_gaussian_rasterization_depth import GaussianRasterizationSettings, GaussianRasterizer
-from scene.gaussian_model import GaussianModel
-from utils.sh_utils import eval_sh
+from ..scene.gaussian_model import MultiGaussianModel
+from ..utils.sh_utils import eval_sh
 
-def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None):
+def render(viewpoint_camera, pc : MultiGaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None):
     """
     Render the scene. 
     
@@ -100,7 +100,7 @@ def render(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.Tensor, 
             "radii": radii}
 
 
-def render_with_sdf(viewpoint_camera, pc : GaussianModel, bg_color : torch.Tensor, objects, \
+def render_with_sdf(viewpoint_camera, pc : MultiGaussianModel, bg_color : torch.Tensor, objects, \
         scaling_modifier = 1.0, override_color = None, SDF_list = None,\
         debug = False,convert_SHs_python = False,compute_cov3D_python=False):
     """

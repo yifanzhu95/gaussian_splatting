@@ -11,15 +11,15 @@
 
 import torch
 import numpy as np
-from utils.general_utils import inverse_sigmoid, get_expon_lr_func, build_rotation
+from ..utils.general_utils import inverse_sigmoid, get_expon_lr_func, build_rotation
 from torch import nn
 import os
-from utils.system_utils import mkdir_p
+from ..utils.system_utils import mkdir_p
 from plyfile import PlyData, PlyElement
-from utils.sh_utils import RGB2SH
+from ..utils.sh_utils import RGB2SH
 from simple_knn._C import distCUDA2
-from utils.graphics_utils import BasicPointCloud
-from utils.general_utils import strip_symmetric, build_scaling_rotation
+from ..utils.graphics_utils import BasicPointCloud
+from ..utils.general_utils import strip_symmetric, build_scaling_rotation
 
 class MultiGaussianModel:
 
@@ -122,17 +122,18 @@ class MultiGaussianModel:
         if self.active_sh_degree < self.max_sh_degree:
             self.active_sh_degree += 1
 
+    #def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float, pcd_mask):
     def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float, pcd_mask):
         self.spatial_lr_scale = spatial_lr_scale
-        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
-        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
+        fused_point_cloud = torch.tensor(np.asarray(pcd[:,0:3])).float().cuda()
+        fused_color = RGB2SH(torch.tensor(np.asarray(pcd[:,3:])).float().cuda())
         features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
         features[:, :3, 0 ] = fused_color
         features[:, 3:, 1:] = 0.0
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
-        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001)
+        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd[:,0:3])).float().cuda()), 0.0000001)
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
@@ -164,10 +165,10 @@ class MultiGaussianModel:
         ]
 
         self.optimizer = torch.optim.Adam(l, lr=0.0, eps=1e-15)
-        self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args.['position_lr_init']*self.spatial_lr_scale,
-                                                    lr_final=training_args.['position_lr_final']*self.spatial_lr_scale,
-                                                    lr_delay_mult=training_args.['position_lr_delay_mult'],
-                                                    max_steps=training_args.['position_lr_max_steps'])
+        self.xyz_scheduler_args = get_expon_lr_func(lr_init=training_args['position_lr_init']*self.spatial_lr_scale,
+                                                    lr_final=training_args['position_lr_final']*self.spatial_lr_scale,
+                                                    lr_delay_mult=training_args['position_lr_delay_mult'],
+                                                    max_steps=training_args['position_lr_max_steps'])
 
     def update_learning_rate(self, iteration):
         ''' Learning rate scheduling per step '''

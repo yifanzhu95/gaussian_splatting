@@ -77,6 +77,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             viewpoint_stack = scene.getTrainCameras().copy()
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
 
+        print(viewpoint_cam.R, viewpoint_cam.T, viewpoint_cam.FoVx, viewpoint_cam.FoVx)
+        exit()
         # Render
         if (iteration - 1) == debug_from:
             pipe.debug = True
