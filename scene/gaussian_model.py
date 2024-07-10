@@ -123,7 +123,7 @@ class MultiGaussianModel:
             self.active_sh_degree += 1
 
     #def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float, pcd_mask):
-    def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float, pcd_mask):
+    def create_from_pcd(self, pcd, spatial_lr_scale : float, pcd_mask):
         self.spatial_lr_scale = spatial_lr_scale
         fused_point_cloud = torch.tensor(np.asarray(pcd[:,0:3])).float().cuda()
         fused_color = RGB2SH(torch.tensor(np.asarray(pcd[:,3:])).float().cuda())
@@ -133,8 +133,9 @@ class MultiGaussianModel:
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
-        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd[:,0:3])).float().cuda()), 0.0000001)
+        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd[:,0:3])).float().cuda()), 0.0000001) #*100
         scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
+
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
 
@@ -151,14 +152,14 @@ class MultiGaussianModel:
         self._masks = pcd_mask
 
     def training_setup(self, training_args):
-        self.percent_dense = training_args.percent_dense
+        self.percent_dense = training_args.get('percent_dense', 0.01)
         self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
 
         l = [
             {'params': [self._xyz], 'lr': training_args['position_lr_init'] * self.spatial_lr_scale, "name": "xyz"},
             {'params': [self._features_dc], 'lr': training_args['feature_lr'], "name": "f_dc"},
-            {'params': [self._features_rest], 'lr': training_arg['feature_lr'] / 20.0, "name": "f_rest"},
+            {'params': [self._features_rest], 'lr': training_args['feature_lr'] / 20.0, "name": "f_rest"},
             # {'params': [self._opacity], 'lr': training_args['opacity_lr'], "name": "opacity"},
             {'params': [self._scaling], 'lr': training_args['scaling_lr'], "name": "scaling"},
             {'params': [self._rotation], 'lr': training_args['rotation_lr'], "name": "rotation"}

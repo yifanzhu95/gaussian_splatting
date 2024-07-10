@@ -11,9 +11,15 @@
 
 import torch
 import math
-from diff_gaussian_rasterization_depth import GaussianRasterizationSettings, GaussianRasterizer
+# from diff_gaussian_rasterization_depth import GaussianRasterizationSettings, GaussianRasterizer
+# package from this repo: https://github.com/robot0321/diff-gaussian-rasterization-depth-acc/tree/c63d79dc4d59b2965eaf7bada5dda2eae68c08af
+from diff_gaussian_rasterization_depth_acc import GaussianRasterizationSettings, GaussianRasterizer
+# from diff_gaussian_rasterization import GaussianRasterizationSettings as GaussianRasterizationSettings2
+# from diff_gaussian_rasterization import GaussianRasterizer as GaussianRasterizer2
+
 from ..scene.gaussian_model import MultiGaussianModel
 from ..utils.sh_utils import eval_sh
+from icecream import ic
 
 def render(viewpoint_camera, pc : MultiGaussianModel, pipe, bg_color : torch.Tensor, scaling_modifier = 1.0, override_color = None):
     """
@@ -48,7 +54,9 @@ def render(viewpoint_camera, pc : MultiGaussianModel, pipe, bg_color : torch.Ten
         debug=pipe.debug
     )
 
+
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
+
 
     means3D = pc.get_xyz
     means2D = screenspace_points
@@ -135,10 +143,10 @@ def render_with_sdf(viewpoint_camera, pc : MultiGaussianModel, bg_color : torch.
         scale_modifier=scaling_modifier,
         viewmatrix=viewpoint_camera.world_view_transform,
         projmatrix=viewpoint_camera.full_proj_transform,
-        sh_degree=pc.active_sh_degree,
+        sh_degree=pc.gaussians.active_sh_degree,
         campos=viewpoint_camera.camera_center,
         prefiltered=False,
-        debug=debug
+        debug=False
     )
 
     rasterizer = GaussianRasterizer(raster_settings=raster_settings)
@@ -147,22 +155,26 @@ def render_with_sdf(viewpoint_camera, pc : MultiGaussianModel, bg_color : torch.
     means2D = screenspace_points
 
     # Opacity now uses the one processed by sdf
-    #opacity = pc.get_opacity
-    # opacities = torch.ones((means3D.shape[0], 1), dtype=torch.float, device="cuda")
-    assert len(opacities) == len(pc.masks)
-    opacities = None
-    for obj in objects:
-        obj.sdf.train()
-        
-        # normalize and get sdf values
-        sdfs = obj.sdf(torch.mm(obj.sdf.R.t(),means3D - obj.sdf.t))
-        obj_opacities = torch.exp(-pc.beta*sdfs)/torch.pow(1 + torch.exp(-pc.beta*sdfs),2)
-        obj.sdf.eval()      
+    GS_opacity = pc.gaussians.get_opacity
 
-        if opacities == None:
-            opacities = obj_opacities
+    # opacities = torch.ones((means3D.shape[0], 1), dtype=torch.float, device="cuda")
+    # assert len(opacities) == len(pc.masks)
+    opacities = torch.ones((means3D.shape[0], 1), dtype=torch.float, device="cuda")
+    assert len(opacities) == len(pc.gaussians._masks)
+
+    for obj in objects:
+        if obj.sdf is not None:
+            obj.sdf.train()
+            # normalize and get sdf values
+            pos_sdf_frame = torch.mm(obj.R.t(), (means3D[pc.gaussians._masks == obj.ID,:] - \
+                obj.pos).t()).t()*obj.scale_tensor
+            sdfs, normals = obj.sdf.forward_torch(pos_sdf_frame)
+            obj_opacities = torch.exp(-pc.beta*sdfs)/torch.pow(1 + torch.exp(-pc.beta*sdfs),2)
+            obj.sdf.eval()   
+            opacities[pc.gaussians._masks == obj.ID] = obj_opacities   
         else:
-            opacities = torch.cat((opacities, obj_opacities), axis = 0)
+            opacities[pc.gaussians._masks == obj.ID] = GS_opacity[pc.gaussians._masks == obj.ID]
+
 
     # If precomputed 3d covariance is provided, use it. If not, then it will be computed from
     # scaling / rotation by the rasterizer.
@@ -192,7 +204,7 @@ def render_with_sdf(viewpoint_camera, pc : MultiGaussianModel, bg_color : torch.
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
-    rendered_image, radii, depth = rasterizer(
+    rendered_image, depth, acc, radii = rasterizer(
         means3D = means3D,
         means2D = means2D,
         shs = shs,
@@ -201,6 +213,7 @@ def render_with_sdf(viewpoint_camera, pc : MultiGaussianModel, bg_color : torch.
         scales = scales,
         rotations = rotations,
         cov3D_precomp = cov3D_precomp)
+
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
     # They will be excluded from value updates used in the splitting criteria.
