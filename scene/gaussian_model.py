@@ -20,6 +20,8 @@ from ..utils.sh_utils import RGB2SH
 from simple_knn._C import distCUDA2
 from ..utils.graphics_utils import BasicPointCloud
 from ..utils.general_utils import strip_symmetric, build_scaling_rotation
+from icecream import ic
+
 
 class MultiGaussianModel:
 
@@ -126,7 +128,7 @@ class MultiGaussianModel:
     def create_from_pcd(self, pcd, spatial_lr_scale : float, pcd_mask):
         self.spatial_lr_scale = spatial_lr_scale
         fused_point_cloud = torch.tensor(np.asarray(pcd[:,0:3])).float().cuda()
-        fused_color = RGB2SH(torch.tensor(np.asarray(pcd[:,3:])).float().cuda())
+        fused_color = RGB2SH(torch.tensor(np.asarray(pcd[:,3:6])).float().cuda())
         features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
         features[:, :3, 0 ] = fused_color
         features[:, 3:, 1:] = 0.0
@@ -160,7 +162,7 @@ class MultiGaussianModel:
             {'params': [self._xyz], 'lr': training_args['position_lr_init'] * self.spatial_lr_scale, "name": "xyz"},
             {'params': [self._features_dc], 'lr': training_args['feature_lr'], "name": "f_dc"},
             {'params': [self._features_rest], 'lr': training_args['feature_lr'] / 20.0, "name": "f_rest"},
-            # {'params': [self._opacity], 'lr': training_args['opacity_lr'], "name": "opacity"},
+            {'params': [self._opacity], 'lr': training_args['opacity_lr'], "name": "opacity"},
             {'params': [self._scaling], 'lr': training_args['scaling_lr'], "name": "scaling"},
             {'params': [self._rotation], 'lr': training_args['rotation_lr'], "name": "rotation"}
         ]
@@ -200,8 +202,10 @@ class MultiGaussianModel:
         normals = np.zeros_like(xyz)
         f_dc = self._features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
         f_rest = self._features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
-        #opacities = self._opacity.detach().cpu().numpy()
+        opacities = self._opacity.detach().cpu().numpy()
         #TODO 
+        ## save according to sdf opacity
+
         scale = self._scaling.detach().cpu().numpy()
         rotation = self._rotation.detach().cpu().numpy()
 
@@ -377,7 +381,7 @@ class MultiGaussianModel:
         new_features_rest = self._features_rest[selected_pts_mask].repeat(N,1,1)
         new_opacity = self._opacity[selected_pts_mask].repeat(N,1)
         
-        new_mask = self._mask[selected_pts_mask.detach().cpu().numpy()].repeat(N)
+        new_mask = self._masks[selected_pts_mask.detach().cpu().numpy()].repeat(N)
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation, new_mask)
 
@@ -396,7 +400,7 @@ class MultiGaussianModel:
         new_opacities = self._opacity[selected_pts_mask]
         new_scaling = self._scaling[selected_pts_mask]
         new_rotation = self._rotation[selected_pts_mask]
-        new_mask = self._mask[selected_pts_mask.detach().cpu().numpy()]
+        new_mask = self._masks[selected_pts_mask.detach().cpu().numpy()]
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation, new_mask)
 

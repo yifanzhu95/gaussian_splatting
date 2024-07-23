@@ -16,6 +16,7 @@ import math
 from diff_gaussian_rasterization_depth_acc import GaussianRasterizationSettings, GaussianRasterizer
 # from diff_gaussian_rasterization import GaussianRasterizationSettings as GaussianRasterizationSettings2
 # from diff_gaussian_rasterization import GaussianRasterizer as GaussianRasterizer2
+from pytorch3d.transforms import quaternion_apply, quaternion_invert, quaternion_multiply
 
 from ..scene.gaussian_model import MultiGaussianModel
 from ..utils.sh_utils import eval_sh
@@ -166,9 +167,17 @@ def render_with_sdf(viewpoint_camera, pc : MultiGaussianModel, bg_color : torch.
         if obj.sdf is not None:
             obj.sdf.train()
             # normalize and get sdf values
-            pos_sdf_frame = torch.mm(obj.R.t(), (means3D[pc.gaussians._masks == obj.ID,:] - \
-                obj.pos).t()).t()*obj.scale_tensor
+            # pos_sdf_frame = torch.mm(obj.R.t(), (means3D[pc.gaussians._masks == obj.ID,:] - \
+            #     obj.pos).t()).t()*obj.scale_tensor
+            # ic(pos_sdf_frame)
+            # sdfs, normals = obj.sdf.forward_torch(pos_sdf_frame)
+
+            # normalize and get sdf values
+            pos_sdf_frame = quaternion_apply(quaternion_invert(obj.rot), \
+                means3D[pc.gaussians._masks == obj.ID,:] - obj.pos)*obj.scale_tensor
             sdfs, normals = obj.sdf.forward_torch(pos_sdf_frame)
+            sdfs = sdfs/obj.scale_tensor
+
             obj_opacities = torch.exp(-pc.beta*sdfs)/torch.pow(1 + torch.exp(-pc.beta*sdfs),2)
             obj.sdf.eval()   
             opacities[pc.gaussians._masks == obj.ID] = obj_opacities   
