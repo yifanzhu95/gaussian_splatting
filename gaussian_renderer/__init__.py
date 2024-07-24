@@ -178,7 +178,7 @@ def render_with_sdf(viewpoint_camera, pc : MultiGaussianModel, bg_color : torch.
             sdfs, normals = obj.sdf.forward_torch(pos_sdf_frame)
             sdfs = sdfs/obj.scale_tensor
 
-            obj_opacities = torch.exp(-pc.beta*sdfs)/torch.pow(1 + torch.exp(-pc.beta*sdfs),2)
+            obj_opacities = pc.gamma*torch.exp(-pc.beta*sdfs)/torch.pow(1 + torch.exp(-pc.beta*sdfs),2)
             obj.sdf.eval()   
             opacities[pc.gaussians._masks == obj.ID] = obj_opacities   
         else:
