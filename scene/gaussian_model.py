@@ -10,6 +10,7 @@
 #
 
 import torch
+import math
 import numpy as np
 from ..utils.general_utils import inverse_sigmoid, get_expon_lr_func, build_rotation
 from torch import nn
@@ -141,7 +142,7 @@ class MultiGaussianModel:
         rots[:, 0] = 1
 
         opacities = inverse_sigmoid(0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
-
+        #opacities = torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda")
         self._xyz = fused_point_cloud #nn.Parameter(fused_point_cloud.requires_grad_(True))
         self._features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
         self._features_rest = nn.Parameter(features[:,:,1:].transpose(1, 2).contiguous().requires_grad_(True))
@@ -176,6 +177,7 @@ class MultiGaussianModel:
                 lr = self.xyz_scheduler_args(iteration)
                 param_group['lr'] = lr
                 return lr
+        
 
     def construct_list_of_attributes(self):
         l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
@@ -412,7 +414,12 @@ class MultiGaussianModel:
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
 
-
+    def clamp_scale(self, scale):
+        for group in self.optimizer.param_groups:
+            for p in group['params']:
+                if p in set([self._scaling]):
+                    p.data.clamp_(-torch.inf, math.log(scale))
+        
 
 class MultiGaussianModelMasked:
 
